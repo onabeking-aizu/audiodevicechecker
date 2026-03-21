@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PCに接続されているマイクやスピーカーのフォーマット（サンプリングレート、チャンネル数など）をブラウザ上で確認できるツールです。">
+    <title>オーディオデバイスチェッカー</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">オーディオデバイスチェッカー</h1>
+            <p class="text-gray-600">お使いのPCに接続されているマイクやスピーカーのフォーマットを確認します。</p>
+        </header>
+
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            <div class="flex flex-col items-center justify-center space-y-4">
+                <button id="scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition duration-200 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    デバイスをスキャンする
+                </button>
+                <div id="loading" class="hidden flex items-center gap-3 text-blue-600 font-medium">
+                    <div class="loader"></div>
+                    スキャン中...
+                </div>
+                <p class="text-sm text-gray-500 mt-2 text-center">
+                    ※デバイス名を正確に取得するため、ブラウザのマイクへのアクセス許可が必要です。<br>許可を求めるポップアップが出た場合は「許可」を選択してください。
+                </p>
+                
+                <!-- エラーメッセージ表示エリア -->
+                <div id="error-message" class="hidden w-full max-w-md bg-red-50 border-l-4 border-red-500 p-4 rounded mt-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.78 7.5a.75.75 0 011.44 0v4.5a.75.75 0 01-1.44 0v-4.5zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">スキャンに失敗しました</h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                <p>マイクへのアクセスが拒否されたか、エラーが発生しました。ブラウザのアドレスバー付近にあるアイコンから、マイクのアクセスを「許可」して再度お試しください。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="results-container" class="hidden space-y-8">
+            <!-- 入力デバイス -->
+            <section class="bg-white rounded-xl shadow-md overflow-hidden">
+                <div class="bg-blue-50 border-b border-blue-100 px-6 py-4">
+                    <h2 class="text-xl font-bold text-blue-800 flex items-center gap-2">
+                        🎤 入力デバイス（マイク・インターフェース）
+                    </h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 text-sm">
+                                <th class="px-6 py-3 border-b">デバイス名</th>
+                                <th class="px-6 py-3 border-b">サンプリングレート (Hz)</th>
+                                <th class="px-6 py-3 border-b">チャンネル数</th>
+                                <th class="px-6 py-3 border-b">ビット数 (Bit)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="input-devices-body" class="divide-y divide-gray-200">
+                            <!-- JSで挿入 -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 出力デバイス -->
+            <section class="bg-white rounded-xl shadow-md overflow-hidden">
+                <div class="bg-green-50 border-b border-green-100 px-6 py-4">
+                    <h2 class="text-xl font-bold text-green-800 flex items-center gap-2">
+                        🔊 出力デバイス（スピーカー・ヘッドホン）
+                    </h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 text-sm">
+                                <th class="px-6 py-3 border-b">デバイス名</th>
+                                <th class="px-6 py-3 border-b">サンプリングレート (Hz)</th>
+                                <th class="px-6 py-3 border-b">備考</th>
+                            </tr>
+                        </thead>
+                        <tbody id="output-devices-body" class="divide-y divide-gray-200">
+                            <!-- JSで挿入 -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ブラウザ仕様に関する注意書き -->
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-yellow-800">ブラウザAPIの制限事項について</h3>
+                        <div class="mt-2 text-sm text-yellow-700 space-y-1">
+                            <p><strong>ビット数について:</strong> Webブラウザはセキュリティとプライバシー保護のため、ハードウェアの実際のビット深度（24bitや32bit floatなど）を隠蔽することが多く、「不明」や「16bit」と表示される場合があります。</p>
+                            <p><strong>出力デバイスについて:</strong> Webの仕様上、個々の出力デバイス（スピーカー等）固有のチャンネル数やHzを取得することはできません。表示されているHzは、ブラウザが処理している現在のオーディオコンテキストのレートです。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('scan-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('scan-btn');
+            const loader = document.getElementById('loading');
+            const resultsContainer = document.getElementById('results-container');
+            const errorMsg = document.getElementById('error-message');
+            
+            // UIのリセット
+            btn.classList.add('hidden');
+            loader.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+
+            try {
+                // 1. デバイス名を取得するために、まずマイクのアクセス許可を要求
+                const initialStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // 許可が取れたらすぐにストリームを閉じる
+                initialStream.getTracks().forEach(track => track.stop());
+
+                // 2. 接続されている全デバイスを列挙
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                const inputs = devices.filter(d => d.kind === 'audioinput');
+                const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+                const inputBody = document.getElementById('input-devices-body');
+                const outputBody = document.getElementById('output-devices-body');
+                inputBody.innerHTML = '';
+                outputBody.innerHTML = '';
+
+                // 3. 入力デバイスの詳細設定（Hz, Channel, Bit）を取得
+                for (const device of inputs) {
+                    let sampleRate = '不明';
+                    let channelCount = '不明';
+                    let sampleSize = '不明';
+
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            audio: { deviceId: { exact: device.deviceId } }
+                        });
+                        const track = stream.getAudioTracks()[0];
+                        const settings = track.getSettings();
+
+                        sampleRate = settings.sampleRate ? `${settings.sampleRate} Hz` : '不明';
+                        channelCount = settings.channelCount ? `${settings.channelCount} ch` : '不明';
+                        sampleSize = settings.sampleSize ? `${settings.sampleSize} bit` : '取得不可 (制限)';
+
+                        track.stop();
+                    } catch (e) {
+                        console.warn('デバイス設定の取得に失敗:', device.label, e);
+                    }
+
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-gray-900">${device.label || '不明なマイク'}</td>
+                        <td class="px-6 py-4">${sampleRate}</td>
+                        <td class="px-6 py-4">${channelCount}</td>
+                        <td class="px-6 py-4 text-gray-500">${sampleSize}</td>
+                    `;
+                    inputBody.appendChild(row);
+                }
+
+                if (inputs.length === 0) {
+                    inputBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">入力デバイスが見つかりません</td></tr>`;
+                }
+
+                // 4. 出力デバイスの処理
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContext();
+                const defaultSampleRate = `${audioCtx.sampleRate} Hz`;
+                
+                for (const device of outputs) {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50';
+                    
+                    const isDefault = device.deviceId === 'default';
+                    const displayRate = isDefault ? defaultSampleRate : 'ブラウザシステム依存';
+                    const remark = isDefault ? 'システムのデフォルト設定' : 'APIによる取得制限あり';
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-gray-900">${device.label || '不明なスピーカー'}</td>
+                        <td class="px-6 py-4">${displayRate}</td>
+                        <td class="px-6 py-4 text-gray-500 text-sm">${remark}</td>
+                    `;
+                    outputBody.appendChild(row);
+                }
+
+                if (outputs.length === 0) {
+                    outputBody.innerHTML = `<tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">出力デバイスが見つかりません</td></tr>`;
+                }
+
+                // 結果を表示
+                loader.classList.add('hidden');
+                btn.classList.remove('hidden');
+                btn.innerText = "再スキャンする";
+                resultsContainer.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                // エラー時は画面上にメッセージを表示
+                errorMsg.classList.remove('hidden');
+                loader.classList.add('hidden');
+                btn.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
